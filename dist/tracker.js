@@ -320,11 +320,10 @@ var Flight = function(flightId, config, map) {
   this.planColor = config.planColor || '#FFFFFF';
   setConfig('planWidth', config.planWidth, 2);
   setConfig('planOpacity', config.planOpacity, 1);
-  
+  this.drawArcFlag = config.drawArc || false;
   this.arcColor = config.arcColor || '#FFFFFF';
   setConfig('arcWidth', config.arcWidth, 2);
   setConfig('arcOpacity', config.arcOpacity, 1);
-  // console.log(config);
   this.pathColor = config.pathColor || '#FFFFFF';
   setConfig('pathWidth', config.pathWidth, 2);
   setConfig('pathOpacity', config.pathOpacity, 1);
@@ -421,7 +420,7 @@ Flight.prototype.initialize = function(data) {
     this.initializePositions();
     this.buildAirports();
     // this.drawAirports();
-    // this.drawPoints();
+    this.drawPoints();
     this.drawArc();
     this.buildTransitions(true);
     this.initialized = true;
@@ -463,6 +462,16 @@ Flight.prototype.panTo = function(zoom) {
     if (zoom != null) {
       this.map.map.setZoom(zoom);
     }
+  }
+};
+
+Flight.prototype.zoomTo = function() {
+  if (this.departureAirportLatitude != null && this.departureAirportLongitude != null && this.arrivalAirportLatitude != null && this.arrivalAirportLongitude != null) {
+    var bounds = [
+      [this.departureAirportLatitude, this.departureAirportLongitude],
+      [this.arrivalAirportLatitude, this.arrivalAirportLongitude]
+    ];
+    this.map.map.fitBounds(bounds);
   }
 };
 
@@ -729,21 +738,17 @@ Flight.prototype.drawPlan = function() {
   }
 };
 
+
 Flight.prototype.drawArc = function() {
-  var departureAirportPosition = [this.departureAirport.latitude, this.departureAirport.longitude];
+  // console.log("calling drawArc");
+  this.arc.attr('d', '');
+  var self = this;
+  
+  var arc = d3.geo.greatArc()
+      .source(function() { return [self.departureAirport.longitude, self.departureAirport.latitude]; })
+      .target(function() { return [self.arrivalAirport.longitude, self.arrivalAirport.latitude]; });
 
-  var arrivalAirportPosition = [this.arrivalAirport.latitude, this.arrivalAirport.longitude];
-
-  var geojson = { 'type': 'Feature',
-    'geometry': {
-      'type': 'LineString',
-      'coordinates': [departureAirportPosition, arrivalAirportPosition]
-    },
-    'properties': {}
-  };
-
-  this.arc.data(geojson);
-  this.arc.attr('d', this.map.arcProjector);
+  this.arc.attr('d', self.map.arcProjector(arc()));
 };
 
 Flight.prototype.allTransitions = function() {
@@ -766,7 +771,10 @@ Flight.prototype.draw = function(viewreset) {
   if (this.drawPlanFlag) {
     this.drawPlan();
   }
-  // this.drawArc();
+  if (this.drawArcFlag) {
+    this.drawArc();
+  }
+
   // this.drawAirports();
 
   for (var i = 0; i < this.untravelledPositions.length; i++) {
@@ -802,6 +810,9 @@ Flight.prototype.redraw = function() {
 
   if (this.drawPlanFlag) {
     this.drawPlan();
+  }
+  if (this.drawArcFlag) {
+    this.drawArc();
   }
 
   this.buildTransitions();
@@ -843,7 +854,6 @@ Flight.prototype.startPolling = function() {
 };
 
 Flight.prototype.updateData = function(data) {
-  // console.log(data);
   var self = this;
   var maxPositions = this.initialized ? 5 : null;
   var i = 0, position = {}, nextPosition = {}, point = {}, alreadyAdded = false, obj = {};
@@ -853,7 +863,19 @@ Flight.prototype.updateData = function(data) {
   if ('arrivalAirportFsCode' in data.flightTrack) {
     self.arrivalAirportCode = data.flightTrack.arrivalAirportFsCode;
   }
-  // console.log(data);
+
+  if ('appendix' in data && 'airports' in data.appendix) {
+    for (var i = 0; i < data.appendix.airports.length; i++) {
+      if (data.appendix.airports[i].fs === self.departureAirportCode) {
+        self.departureAirportLatitude = data.appendix.airports[i].latitude;
+        self.departureAirportLongitude = data.appendix.airports[i].longitude;
+      }
+      else if (data.appendix.airports[i].fs === self.arrivalAirportCode) {
+        self.arrivalAirportLatitude = data.appendix.airports[i].latitude;
+        self.arrivalAirportLongitude = data.appendix.airports[i].longitude;
+      }
+    }
+  }
 
   self.waypoints = data.flightTrack.waypoints;
   self.airportData = data.appendix.airports;
@@ -923,6 +945,7 @@ Flight.prototype.reformatPositions = function(positions) {
   var newPositions = [];
 
   for (var i = 0; i < positions.length; i++) {
+    // console.log(positions[i].lon, positions[i].lat);
     newPositions.push([positions[i].lon, positions[i].lat]);
   }
 
@@ -1074,6 +1097,42 @@ function parseTransform(a) {
   }
   return b;
 }
+var gulp = require('gulp');
+var concat = require('gulp-concat');
+var uglify = require('gulp-uglify');
+var sourcemaps = require('gulp-sourcemaps');
+var del = require('del');
+
+var paths = {
+  scripts: ['js/*.js']
+};
+
+// Not all tasks need to use streams
+// A gulpfile is just another node program and you can use all packages available on npm
+gulp.task('clean', function(cb) {
+  // You can use multiple globbing patterns as you would with `gulp.src`
+  del(['build'], cb);
+});
+
+gulp.task('scripts', ['clean'], function() {
+  // Minify and copy all JavaScript (except vendor scripts)
+  // with sourcemaps all the way down
+  return gulp.src(paths.scripts)
+    .pipe(sourcemaps.init())
+      .pipe(uglify())
+      .pipe(concat('all.min.js'))
+    .pipe(sourcemaps.write())
+    .pipe(gulp.dest('build/js'));
+});
+
+// Rerun the task when a file changes
+gulp.task('watch', function() {
+  gulp.watch(paths.scripts, ['scripts']);
+  gulp.watch(paths.images, ['images']);
+});
+
+// The default task (called when you run `gulp` from cli)
+gulp.task('default', ['watch', 'scripts']);
 var fsBasePath = '/data/';
 
 var Map = function(config) {
@@ -1176,7 +1235,7 @@ var Map = function(config) {
  	this.arcProjector = d3.geo.path().projection(project);
 
  	function project(x) {
-  	var point = map.latLngToLayerPoint(new L.LatLng(x[1], x[0]));
+  	var point = self.map.latLngToLayerPoint(new L.LatLng(x[1], x[0]));
   	return [point.x, point.y];
 	}
 
@@ -1266,11 +1325,17 @@ Map.prototype.reset = function() {
 
 	this.paths.selectAll("*").remove();
 	this.points.selectAll("*").remove();
+  // console.log("Removing arcs");
+  this.arcs.selectAll("*").remove();
 	this.svg
     .attr('width', topRight[0] - bottomLeft[0])
     .attr('height', bottomLeft[1] - topRight[1])
     .style('margin-left', bottomLeft[0] + 'px')
     .style('margin-top', topRight[1] + 'px');
+
+  this.arcs
+    .style('margin-left', -bottomLeft[0] + 'px')
+    .style('margin-top', -topRight[1] + 'px');
 
 	for (var flight in this.flights) {
 	  if (this.flights[flight].initialized) {

@@ -23,6 +23,15 @@
       'flexConfig': {
         'appId': '@@__APP_ID__',
         'appKey': '@@__APP_KEY__'
+      },
+      'flightConfig': {
+        'pathOpacity': 0.5,
+        'drawPlan': true,
+        'drawArc': false,
+        'pathOpacity': 0,
+        'planOpacity': 0.3,
+        'planeIconScale': 1.5,
+        'planeIconSize': 39
       }
     };
 
@@ -30,7 +39,7 @@
 
     flightMap.addFlight(flightId, function(err, flight) {
       if (!!err) console.log(err);
-      flight.panTo();
+      flight.zoomTo();
     });
 
     </script>

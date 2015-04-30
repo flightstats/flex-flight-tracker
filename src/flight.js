@@ -20,11 +20,10 @@ var Flight = function(flightId, config, map) {
   this.planColor = config.planColor || '#FFFFFF';
   setConfig('planWidth', config.planWidth, 2);
   setConfig('planOpacity', config.planOpacity, 1);
-  
+  this.drawArcFlag = config.drawArc || false;
   this.arcColor = config.arcColor || '#FFFFFF';
   setConfig('arcWidth', config.arcWidth, 2);
   setConfig('arcOpacity', config.arcOpacity, 1);
-  // console.log(config);
   this.pathColor = config.pathColor || '#FFFFFF';
   setConfig('pathWidth', config.pathWidth, 2);
   setConfig('pathOpacity', config.pathOpacity, 1);
@@ -121,7 +120,7 @@ Flight.prototype.initialize = function(data) {
     this.initializePositions();
     this.buildAirports();
     // this.drawAirports();
-    // this.drawPoints();
+    this.drawPoints();
     this.drawArc();
     this.buildTransitions(true);
     this.initialized = true;
@@ -163,6 +162,16 @@ Flight.prototype.panTo = function(zoom) {
     if (zoom != null) {
       this.map.map.setZoom(zoom);
     }
+  }
+};
+
+Flight.prototype.zoomTo = function() {
+  if (this.departureAirportLatitude != null && this.departureAirportLongitude != null && this.arrivalAirportLatitude != null && this.arrivalAirportLongitude != null) {
+    var bounds = [
+      [this.departureAirportLatitude, this.departureAirportLongitude],
+      [this.arrivalAirportLatitude, this.arrivalAirportLongitude]
+    ];
+    this.map.map.fitBounds(bounds);
   }
 };
 
@@ -429,21 +438,17 @@ Flight.prototype.drawPlan = function() {
   }
 };
 
+
 Flight.prototype.drawArc = function() {
-  var departureAirportPosition = [this.departureAirport.latitude, this.departureAirport.longitude];
+  // console.log("calling drawArc");
+  this.arc.attr('d', '');
+  var self = this;
+  
+  var arc = d3.geo.greatArc()
+      .source(function() { return [self.departureAirport.longitude, self.departureAirport.latitude]; })
+      .target(function() { return [self.arrivalAirport.longitude, self.arrivalAirport.latitude]; });
 
-  var arrivalAirportPosition = [this.arrivalAirport.latitude, this.arrivalAirport.longitude];
-
-  var geojson = { 'type': 'Feature',
-    'geometry': {
-      'type': 'LineString',
-      'coordinates': [departureAirportPosition, arrivalAirportPosition]
-    },
-    'properties': {}
-  };
-
-  this.arc.data(geojson);
-  this.arc.attr('d', this.map.arcProjector);
+  this.arc.attr('d', self.map.arcProjector(arc()));
 };
 
 Flight.prototype.allTransitions = function() {
@@ -466,7 +471,10 @@ Flight.prototype.draw = function(viewreset) {
   if (this.drawPlanFlag) {
     this.drawPlan();
   }
-  // this.drawArc();
+  if (this.drawArcFlag) {
+    this.drawArc();
+  }
+
   // this.drawAirports();
 
   for (var i = 0; i < this.untravelledPositions.length; i++) {
@@ -502,6 +510,9 @@ Flight.prototype.redraw = function() {
 
   if (this.drawPlanFlag) {
     this.drawPlan();
+  }
+  if (this.drawArcFlag) {
+    this.drawArc();
   }
 
   this.buildTransitions();
@@ -543,7 +554,6 @@ Flight.prototype.startPolling = function() {
 };
 
 Flight.prototype.updateData = function(data) {
-  // console.log(data);
   var self = this;
   var maxPositions = this.initialized ? 5 : null;
   var i = 0, position = {}, nextPosition = {}, point = {}, alreadyAdded = false, obj = {};
@@ -553,7 +563,19 @@ Flight.prototype.updateData = function(data) {
   if ('arrivalAirportFsCode' in data.flightTrack) {
     self.arrivalAirportCode = data.flightTrack.arrivalAirportFsCode;
   }
-  // console.log(data);
+
+  if ('appendix' in data && 'airports' in data.appendix) {
+    for (var i = 0; i < data.appendix.airports.length; i++) {
+      if (data.appendix.airports[i].fs === self.departureAirportCode) {
+        self.departureAirportLatitude = data.appendix.airports[i].latitude;
+        self.departureAirportLongitude = data.appendix.airports[i].longitude;
+      }
+      else if (data.appendix.airports[i].fs === self.arrivalAirportCode) {
+        self.arrivalAirportLatitude = data.appendix.airports[i].latitude;
+        self.arrivalAirportLongitude = data.appendix.airports[i].longitude;
+      }
+    }
+  }
 
   self.waypoints = data.flightTrack.waypoints;
   self.airportData = data.appendix.airports;
@@ -623,6 +645,7 @@ Flight.prototype.reformatPositions = function(positions) {
   var newPositions = [];
 
   for (var i = 0; i < positions.length; i++) {
+    // console.log(positions[i].lon, positions[i].lat);
     newPositions.push([positions[i].lon, positions[i].lat]);
   }
 

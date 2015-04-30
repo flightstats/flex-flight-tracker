@@ -100,7 +100,7 @@ var Map = function(config) {
  	this.arcProjector = d3.geo.path().projection(project);
 
  	function project(x) {
-  	var point = map.latLngToLayerPoint(new L.LatLng(x[1], x[0]));
+  	var point = self.map.latLngToLayerPoint(new L.LatLng(x[1], x[0]));
   	return [point.x, point.y];
 	}
 
@@ -190,11 +190,17 @@ Map.prototype.reset = function() {
 
 	this.paths.selectAll("*").remove();
 	this.points.selectAll("*").remove();
+  // console.log("Removing arcs");
+  this.arcs.selectAll("*").remove();
 	this.svg
     .attr('width', topRight[0] - bottomLeft[0])
     .attr('height', bottomLeft[1] - topRight[1])
     .style('margin-left', bottomLeft[0] + 'px')
     .style('margin-top', topRight[1] + 'px');
+
+  this.arcs
+    .style('margin-left', -bottomLeft[0] + 'px')
+    .style('margin-top', -topRight[1] + 'px');
 
 	for (var flight in this.flights) {
 	  if (this.flights[flight].initialized) {
