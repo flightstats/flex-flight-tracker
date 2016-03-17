@@ -42,6 +42,10 @@ module.exports = function (grunt) {
                             replacement: '../../src'
                         },
                         {
+                            match: '../vendor',
+                            replacement: '../../vendor'
+                        },
+                        {
                             match: './stylesheets',
                             replacement: '.././stylesheets'
                         }

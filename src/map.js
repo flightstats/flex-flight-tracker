@@ -1,7 +1,6 @@
 var fsBasePath = '/data/';
 
 var Map = function(config) {
-	// console.log("map config", config);
 	var self = this;
 	config.subdomains = config.subdomains || 'abcd';
 	this.flexConfig = config.flexConfig;
@@ -38,48 +37,13 @@ var Map = function(config) {
   	this.airportConfig.flexConfig = this.flexConfig;
   	this.flightConfig.flexConfig = this.flexConfig;
 
-	this.map.on('viewreset', function() {
-		// console.log('viewreset');
-	  // self.reset();
-	});
-
-	this.map.on('zoomend', function() {
-		// console.log('zoomend');
-	  // self.reset();
-	});
 
 	this.map.on('moveend', function() {
-		// console.log('moveend');
-		// self.saveAnimationPositions();
 	  self.reset();
 	});
 
-	this.map.on('resize', function() {
-		// alert('resize');
-	  // self.reset();
-	  // console.log('resize');
-	});	
-
-	this.map.on('focus', function() {
-		// console.log('focus');
-		// alert('focus');
-	  // self.reset();
-	});
-
-	this.map.on('blur', function() {
-		// alert('blur');
-	  // self.reset();
-	  // console.log('blur');
-	});
-
 	this.map.on('movestart', function() {
-		// console.log('movestart');
 	  self.saveAnimationPositions();
-	});
-
-	this.map.on('zoomstart', function() {
-		// console.log('zoomstart');
-	  // self.saveAnimationPositions();
 	});
 
 	this.projection = d3.geo.mercator()
@@ -137,7 +101,6 @@ Map.prototype.addFlight = function(flightId, done) {
 
 	self.flights[flightId] = new Flight(flightId, self.flightConfig, self);
 	self.flights[flightId].fetchFlightTracks(null, function(err, data, flight) {
-		// console.log(flightId);
 		if (err) {
 			console.log(err);
 		}
@@ -145,7 +108,6 @@ Map.prototype.addFlight = function(flightId, done) {
 			console.log(data.error.errorMessage);
 		}
 		else {
-			// console.log("initializing flight", flightId);
 			flight.initialize(data);
 		}
 		if (done != null) done(err, flight);
@@ -217,12 +179,7 @@ Map.prototype.saveAnimationPositions = function() {
     var position = this.flights[flight].travelledPositions[this.flights[flight].travelledPositions.length - 1];
     var nextPosition = this.flights[flight].untravelledPositions[0];
 
-    if (position != null && nextPosition != null) {
-    	// if (position.delay === nextPosition.delay) {
-    	// 	progress = (new Date().getTime() - this.flights[flight].transitions.time) / position.duration;
-    	// }
-    	// console.log(position, nextPosition);
-    	// console.log(new Date().getTime() - this.flights[flight].transitions.time, position.delay, position.duration, nextPosition.delay, nextPosition.duration);
+    if (position != null && nextPosition != null && nextPosition.duration) {
     	var dividend = new Date().getTime() - this.flights[flight].transitions.time;
     	var divisor = nextPosition.duration;
     	var progress = dividend / divisor;
@@ -235,7 +192,7 @@ Map.prototype.saveAnimationPositions = function() {
 
     	var interpolater = d3.geo.interpolate([position.lon, position.lat], [nextPosition.lon, nextPosition.lat]);
     	var interpolatedPoint = interpolater(progress);
-
+      
     	this.flights[flight].interpolatedPosition = {};
     	this.flights[flight].interpolatedPosition.lat = interpolatedPoint[1];
     	this.flights[flight].interpolatedPosition.lon = interpolatedPoint[0];
@@ -245,7 +202,7 @@ Map.prototype.saveAnimationPositions = function() {
     	this.flights[flight].plane.transition().duration(0);
     }
     else {
-    	console.log("No positions for flight", flight);
+    	alert("No positions for flight");
     }
   }
 };

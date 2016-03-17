@@ -7,22 +7,30 @@
   </head>
   <body>
     <div class="container" id="container">
-      <p>
-        <a href="#" id="airport-link" class="btn btn-primary" role="button">View Airport Map</a>
-        <a href="/examples/replace/bounds.html" class="btn btn-default" role="button">Explore by Bounds</a>
-      </p>
+      <p></p>
 
-      <table class="table">
+      <table class="table" id="departures">
         <tr>
-          <th>ID</th>
+          <th>Destination</th>
+          <th>Date</th>
           <th>Airline</th>
           <th>Flight Number</th>
-          <th>Destination</th>
           <th>Departure Time</th>
+        </tr>
+      </table>
+
+      <table class="table" id="arrivals">
+        <tr>
+          <th>Origin</th>
+          <th>Date</th>
+          <th>Airline</th>
+          <th>Flight Number</th>
+          <th>Arrival Time</th>
         </tr>
       </table>
     </div>
     <script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+    <script src="@@../vendor/moment.js" charset="utf-8"></script>
     <script src="@@../src/flex.js"></script>
     <script type="text/javascript">
 
@@ -35,7 +43,8 @@
     var airportId = window.location.search.replace("?airportId=", "");
 
     var container = d3.select('#container');
-    var tbody = d3.select('tbody');
+    var departuresTbody = d3.select('#departures tbody');
+    var arrivalsTbody = d3.select('#arrivals tbody');
 
     var rowClasses = {
       "A": "success",
@@ -47,37 +56,61 @@
     d3.select('#airport-link').attr('href', '/examples/replace/airport.html?airportId=' + airportId);
     container.insert('h1', 'p').text('Current Flights for ' + airportId);
 
-    flex.fetchActiveIncomingFlightsForAirport(airportId, null, function(err, data) {
+    flex.fetchActiveOutgoingFlightsForAirport(airportId, null, function(err, data) {
+      console.log(data)
       var row, flight;
+      var nameDictionary = buildNameDictionary(data.appendix);
 
       if (data.flightTracks.length === 0) console.log("no incoming flight tracks");
 
       for (var i = 0; i < data.flightTracks.length; i++) {
         flight = data.flightTracks[i];
-        row = tbody.append('tr');
-        row.append('td').append('a').text(flight.flightId).attr('href', 'test.html?flightId=' + flight.flightId).attr('target', '_blank');
-        row.append('td').text(flight.carrierFsCode);
-        row.append('td').text(flight.flightNumber);
-        row.append('td').text(flight.arrivalAirportFsCode);
-        row.append('td').text(new Date(Date.parse(flight.departureDate.dateLocal)).toString());
+        if (flight.positions.length > 5) {
+          row = departuresTbody.append('tr');
+          row.append('td').append('a').text(nameDictionary.airports[flight.arrivalAirportFsCode].city).attr('href', 'test.html?flightId=' + flight.flightId).attr('target', '_blank');
+          row.append('td').text(moment(flight.departureDate.dateLocal).format("M/D/YYYY"));
+          row.append('td').text(nameDictionary.airlines[flight.carrierFsCode].name);
+          row.append('td').text(flight.flightNumber);
+          row.append('td').text(moment(flight.departureDate.dateLocal).format("h:mm a"));
+        }
       }
     });
 
-    flex.fetchActiveOutgoingFlightsForAirport(airportId, null, function(err, data) {
+    flex.fetchActiveIncomingFlightsForAirport(airportId, null, function(err, data) {
       var row, flight;
-
+      var nameDictionary = buildNameDictionary(data.appendix);
+      
       if (data.flightTracks.length === 0) console.log("no outgoing flight tracks");
 
       for (var i = 0; i < data.flightTracks.length; i++) {
         flight = data.flightTracks[i];
-        row = tbody.append('tr');
-        row.append('td').append('a').text(flight.flightId).attr('href', 'test.html?flightId=' + flight.flightId).attr('target', '_blank');
-        row.append('td').text(flight.carrierFsCode);
-        row.append('td').text(flight.flightNumber);
-        row.append('td').text(flight.arrivalAirportFsCode);
-        row.append('td').text(new Date(Date.parse(flight.departureDate.dateLocal)).toString());
+        if (flight.positions.length > 5) {
+          row = arrivalsTbody.append('tr');
+          row.append('td').append('a').text(nameDictionary.airports[flight.departureAirportFsCode].city).attr('href', 'test.html?flightId=' + flight.flightId).attr('target', '_blank');
+          row.append('td').text(moment(flight.departureDate.dateLocal).format("M/D/YYYY"));
+          row.append('td').text(nameDictionary.airlines[flight.carrierFsCode].name);
+          row.append('td').text(flight.flightNumber);
+          row.append('td').text(moment(flight.departureDate.dateLocal).format("h:mm a"));
+        }
       }
     });
+
+    function buildNameDictionary(appendix) {
+      var result = {
+        airports: {},
+        airlines: {}
+      };
+
+      appendix.airlines.forEach(function(airline) {
+        result.airlines[airline.fs] = airline;
+      });
+
+      appendix.airports.forEach(function(airport) {
+        result.airports[airport.fs] = airport;
+      });
+
+      return result;
+    }
 
     </script>
   </body>

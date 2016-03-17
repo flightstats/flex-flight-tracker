@@ -338,6 +338,8 @@ var Flight = function(flightId, config, map) {
   this.waypoints = [];
   this.points = [];
   this.stillInterior = true;
+  this.departureAirport = {};
+  this.arrivalAirport = {};
 
   if (this.planeIconUrl != null && this.planeIconUrl.length > 0) {
     this.plane = map.planes.append('svg:image')
@@ -413,13 +415,12 @@ Flight.prototype.showMarker = function() {
 };
 
 Flight.prototype.initialize = function(data) {
-  // console.log("initialize", data);
   this.data = data;
   this.updateData(data);
   if (data.flightTrack.positions.length > 5) {
     this.initializePositions();
     this.buildAirports();
-    // this.drawAirports();
+    this.drawAirports();
     this.drawPoints();
     this.drawArc();
     this.buildTransitions(true);
@@ -432,12 +433,12 @@ Flight.prototype.initialize = function(data) {
 
 Flight.prototype.buildAirports = function() {
   var airport;
-  // console.log(this.airportData);
+
   if (this.airportData != null) {
     for (var i = 0; i < this.airportData.length; i++) {
       airport = this.airportData[i];
       airport.svg = this.map.airports.append('svg:text')
-        .text(airport.fs)
+        .text(airport.city)
         .style('fill', this.color);
       if (this.departureAirportCode == airport.fs) {
         this.departureAirport = airport;
@@ -450,6 +451,17 @@ Flight.prototype.buildAirports = function() {
 };
 
 Flight.prototype.drawAirports = function() {
+  if (this.doesCrossDateline && !this.airportLocationCorrectedForDatelineCrossing) {
+    if (this.departureAirport.longitude > this.arrivalAirport.longitude) {
+      this.departureAirport.longitude = -180 - (180 - this.departureAirport.longitude);
+    }
+    else {
+      this.arrivalAirport.longitude = -180 - (180 - this.arrivalAirport.longitude);
+    }
+    this.zoomTo();
+    this.airportLocationCorrectedForDatelineCrossing = true;
+  }
+
   this.departureAirport.svg
     .attr('transform', this.transformGenerator([this.departureAirport.longitude, this.departureAirport.latitude]));
   this.arrivalAirport.svg
@@ -466,10 +478,10 @@ Flight.prototype.panTo = function(zoom) {
 };
 
 Flight.prototype.zoomTo = function() {
-  if (this.departureAirportLatitude != null && this.departureAirportLongitude != null && this.arrivalAirportLatitude != null && this.arrivalAirportLongitude != null) {
+  if (this.departureAirport.latitude != null && this.departureAirport.longitude != null && this.arrivalAirport.latitude != null && this.arrivalAirport.longitude != null) {
     var bounds = [
-      [this.departureAirportLatitude, this.departureAirportLongitude],
-      [this.arrivalAirportLatitude, this.arrivalAirportLongitude]
+      [this.departureAirport.latitude, this.departureAirport.longitude],
+      [this.arrivalAirport.latitude, this.arrivalAirport.longitude]
     ];
     this.map.map.fitBounds(bounds);
   }
@@ -477,7 +489,7 @@ Flight.prototype.zoomTo = function() {
 
 Flight.prototype.initializePositions = function() {
   if (this.data.flightTrack.positions.length <= 5) {
-    alert('not enough data');
+    alert('Tracking has not begun');
   }
   else if (this.data.flightTrack.positions.length > 5) {
     // reorder raw positions from oldest to newest so we can push new observations onto the array
@@ -497,7 +509,7 @@ Flight.prototype.initializePositions = function() {
 Flight.prototype.buildInterpolatedPositions = function() {
   // use these positions to draw an svg line of the flight path using D3's 
   // interpolation (smoothing) to enhace animation experience
-  this.path.attr('d', this.map.invisibleLineProjector(this.reformatPositions(this.positions)));
+  this.path.attr('d', this.map.invisibleLineProjector(this.reformatPositions(this.positions, false)));
   this.pathLength = this.path.node().getTotalLength();
 
   var i = 0, 
@@ -508,7 +520,7 @@ Flight.prototype.buildInterpolatedPositions = function() {
       multiplier = 0,
       flooredPathLength = Math.floor(this.pathLength),
       count = Math.floor(this.pathLength / interval);
-  // console.log('flooredPathLength', flooredPathLength);
+
   for (i = 0; i < flooredPathLength; i += interval) {
     multiplier = i / flooredPathLength;
     point = this.path.node().getPointAtLength(multiplier * this.pathLength);
@@ -628,12 +640,10 @@ Flight.prototype.buildTransitions = function(viewreset) {
     this.addTransition(position, nextPosition, 0);
   }
   else {
-    // console.log(this.flightId, this.untravelledPositions.length);
     for (var i = 0; i < this.untravelledPositions.length; i++) {
       nextPosition = this.untravelledPositions[i + 1];
       if (i === 0 && this.interpolatedPosition != null && viewreset) {
         position = this.interpolatedPosition;
-        // this.addTransition(position, nextPosition, i);
       }
       else if (i === 0 && !this.initialized) {
         position = this.untravelledPositions[i];
@@ -655,7 +665,7 @@ Flight.prototype.buildTransitions = function(viewreset) {
 Flight.prototype.addTransition = function(position, nextPosition, index) {
   var self = this, transition;
   var transform = self.transformGenerator(position, nextPosition);
-  // console.log(transform, position, nextPosition);
+
   this.transitions[nextPosition.id] = {};
 
   if (index === 0) {
@@ -714,12 +724,8 @@ Flight.prototype.hideTravelledPoints = function() {
 };
 
 Flight.prototype.showPlan = function() {
-  // console.log('showPlan', this.plan.attr('stroke-opacity'));
   if (this.plan != null) {
     this.plan.attr('stroke-opacity', this.planOpacity);  
-  }
-  else {
-    // console.log('plan not defined for', this);
   }
 };
 
@@ -727,20 +733,16 @@ Flight.prototype.hidePlan = function() {
   if (this.plan != null) {
     this.plan.attr('stroke-opacity', '0');
   }
-  else {
-    // console.log('plan not defined for', this);
-  }
 };
 
 Flight.prototype.drawPlan = function() {
   if (this.waypoints != null) {
-    this.plan.attr('d', this.map.projectLine(this.reformatPositions(this.waypoints)));
+    this.plan.attr('d', this.map.projectLine(this.reformatPositions(this.waypoints, true)));
   }
 };
 
 
 Flight.prototype.drawArc = function() {
-  // console.log("calling drawArc");
   this.arc.attr('d', '');
   var self = this;
   
@@ -756,7 +758,6 @@ Flight.prototype.allTransitions = function() {
 };
 
 Flight.prototype.draw = function(viewreset) {
-  // console.log("draw", viewreset);
   var self = this,
       position = {}, 
       nextPosition = {}, 
@@ -764,8 +765,7 @@ Flight.prototype.draw = function(viewreset) {
 
   this.removePoints();
   this.cancelTransitions();
-
-  this.path.attr('d', self.map.invisibleLineProjector(self.reformatPositions(self.positions)));
+  this.path.attr('d', self.map.invisibleLineProjector(self.reformatPositions(self.positions, false)));
   this.pathLength = self.path.node().getTotalLength();
 
   if (this.drawPlanFlag) {
@@ -775,7 +775,7 @@ Flight.prototype.draw = function(viewreset) {
     this.drawArc();
   }
 
-  // this.drawAirports();
+  this.drawAirports();
 
   for (var i = 0; i < this.untravelledPositions.length; i++) {
     this.untravelledPositions[i].hasAnimation = false;
@@ -791,7 +791,6 @@ Flight.prototype.cancelTransitions = function() {
 };
 
 Flight.prototype.remove = function() {
-  // console.log('removing flight', this.flightId);
   this.plane.remove();
   this.plan.remove();
   this.removePoints();
@@ -804,7 +803,7 @@ Flight.prototype.redraw = function() {
       nextPosition = {}, 
       transform = '';
 
-  this.path.attr('d', self.map.invisibleLineProjector(self.reformatPositions(self.positions)));
+  this.path.attr('d', self.map.invisibleLineProjector(self.reformatPositions(self.positions, false)));
   this.pathLength = self.path.node().getTotalLength();
   this.buildInterpolatedPositions();
 
@@ -867,12 +866,12 @@ Flight.prototype.updateData = function(data) {
   if ('appendix' in data && 'airports' in data.appendix) {
     for (var i = 0; i < data.appendix.airports.length; i++) {
       if (data.appendix.airports[i].fs === self.departureAirportCode) {
-        self.departureAirportLatitude = data.appendix.airports[i].latitude;
-        self.departureAirportLongitude = data.appendix.airports[i].longitude;
+        self.departureAirport.latitude = data.appendix.airports[i].latitude;
+        self.departureAirport.longitude = data.appendix.airports[i].longitude;
       }
       else if (data.appendix.airports[i].fs === self.arrivalAirportCode) {
-        self.arrivalAirportLatitude = data.appendix.airports[i].latitude;
-        self.arrivalAirportLongitude = data.appendix.airports[i].longitude;
+        self.arrivalAirport.latitude = data.appendix.airports[i].latitude;
+        self.arrivalAirport.longitude = data.appendix.airports[i].longitude;
       }
     }
   }
@@ -908,16 +907,11 @@ Flight.prototype.fetchFlightTracks = function(maxPositions, done) {
     sourceType: 'raw'
   };
 
-  // var options = {
-  //   includeFlightPlan: 'true'
-  // };
-
   if (maxPositions != null) {
     options.maxPositions = maxPositions;
   }
 
   this.flex.fetchFlightTracksForFlight(this.flightId, options, function(err, data) {
-    // console.log(err, data);
     done(err, data, self);
   });
 };
@@ -936,32 +930,74 @@ Flight.prototype.calculateHeading = function(point1, point2) {
     return this.lastKnownHeading;
   }
   else {
-    // console.log("estimatedHeading uncalculable");
     return this.lastKnownHeading;
   }
 };
 
-Flight.prototype.reformatPositions = function(positions) {
+Flight.prototype.reformatPositions = function(positions, areWaypoints) {
+  var self = this;
   var newPositions = [];
 
   for (var i = 0; i < positions.length; i++) {
-    // console.log(positions[i].lon, positions[i].lat);
     newPositions.push([positions[i].lon, positions[i].lat]);
   }
 
-  dateLineProcessor(newPositions);
+  var dateLineProcessorResult = dateLineProcessor(newPositions);
+
+  if (dateLineProcessorResult === "reversed") {
+    dateLineProcessorResult = dateLineProcessor(newPositions.reverse());
+  }
+  
+  if (dateLineProcessorResult === "didPassDateline") {
+    this.doesCrossDateline = true;
+  }
+
   return newPositions;
+
+  function dateLineProcessor(positions) {
+    var prev, current, next, didPassDateline = 0;
+
+    for (var i = 0; i < positions.length; i++) {
+      if ((i - 1) >= 0 && (i + 1) <= positions.length) {
+        prev = positions[i - 1];
+        current = positions[i];
+        next = positions[i + 1];
+
+        // East -> West
+        if (prev[0] < 90 && current[0] > 90) {
+          didPassDateline = -1;
+        }
+
+        // West -> East
+        if (current[0] < 90 && prev[0] > 90) {
+          didPassDateline = 1;
+        }
+
+        if (didPassDateline === 1) {
+          return "reversed";
+        }
+        
+        if (didPassDateline === -1 || (self.doesCrossDateline && !areWaypoints)) {
+          current[0] = -180 - (180 - current[0]);
+        }
+      }
+    }
+
+    if (didPassDateline === -1) {
+      return "didPassDateline";
+    }
+  }
 };
 
 Flight.prototype.transformGenerator = function(position, nextPosition) {
   var halfIcon = this.planeIconSize / 2,
       transform, translate, course, rotate;
-  if (position != null && nextPosition != null) {
+  if (position && nextPosition) {
     transform = this.map.projectContainerPoint([position.lon, position.lat]);
     translate = 'translate(' + (transform[0] - halfIcon) + ',' + (transform[1] - halfIcon) + ')'; 
     course = this.calculateHeading(position, nextPosition);
     rotate = 'rotate(' + course + ', ' + halfIcon + ', ' + halfIcon + ')';
-    if (isNaN(course)) {
+    if (!course || isNaN(course)) {
       if (position.course != null) {
         rotate = 'rotate(' + position.course + ', ' + halfIcon + ', ' + halfIcon + ')';
       }
@@ -975,32 +1011,10 @@ Flight.prototype.transformGenerator = function(position, nextPosition) {
       'transform': translate + '' + rotate + 'scale(' + this.planeIconScale + ')'
     };
   }
-  // if (position != null && nextPosition != null) {
-  //   transform = this.map.projectContainerPoint([position.lon, position.lat]);
-  //   translate = 'translate(' + transform[0] + ',' + transform[1] + ')'; 
-  //   course = this.calculateHeading(position, nextPosition);
-  //   rotate = 'rotate(' + course + ')';
-  //   if (isNaN(course)) {
-  //     if (position.course != null) {
-  //       rotate = 'rotate(' + position.course + ')';
-  //     }
-  //     else {
-  //       rotate = 'rotate(0)';
-  //     }
-  //   }
-  //   return {
-  //     'translate': translate,
-  //     'rotate': rotate,
-  //     'transform': translate + '' + rotate
-  //   };
-  // }
   else if (position != null) {
     transform = this.map.projectContainerPoint([position[0], position[1]]);
     translate = 'translate(' + transform[0] + ',' + transform[1] + ') scale(' + this.planeIconScale + ')';
     return translate;
-  }
-  else {
-    // console.log('transformGenerator recieved', position, nextPosition);
   }
 };
 
@@ -1034,34 +1048,6 @@ function toDeg(rad) {
   return rad * (180 / Math.PI);
 }
 
-function dateLineProcessor(positions) {
-  var prev, current, next, didPassDateline = 0;
-  for (var i = 0; i < positions.length; i++) {
-    if ((i - 1) >= 0 && (i + 1) <= positions.length) {
-      prev = positions[i - 1];
-      current = positions[i];
-      next = positions[i + 1];
-
-      // East -> West
-      if (prev[0] < 90 && current[0] > 90) {
-        didPassDateline = -1;
-      }
-
-      // West -> East
-      if (current[0] < 90 && prev[0] > 90) {
-        didPassDateline = 1;
-      }
-
-      if (didPassDateline === 1) {
-        current[0] = -180 - (180 - current[0]);
-      }
-      else if (didPassDateline === -1) {
-        current[0] = 180 + (180 + current[0]);
-      }
-    }
-  }
-}
-
 function distanceTo(positionA, positionB) {
   var a = L.latLng([positionA.lat, positionA.lon]);
   var b = L.latLng([positionB.lat, positionB.lon]);
@@ -1086,7 +1072,6 @@ function randomHexColor() {
     }
   }
   return result;
-  // return '#' + Math.floor(Math.random() * 16777215).toString(16);
 }
 
 function parseTransform(a) {
@@ -1136,7 +1121,6 @@ gulp.task('default', ['watch', 'scripts']);
 var fsBasePath = '/data/';
 
 var Map = function(config) {
-	// console.log("map config", config);
 	var self = this;
 	config.subdomains = config.subdomains || 'abcd';
 	this.flexConfig = config.flexConfig;
@@ -1173,48 +1157,13 @@ var Map = function(config) {
   	this.airportConfig.flexConfig = this.flexConfig;
   	this.flightConfig.flexConfig = this.flexConfig;
 
-	this.map.on('viewreset', function() {
-		// console.log('viewreset');
-	  // self.reset();
-	});
-
-	this.map.on('zoomend', function() {
-		// console.log('zoomend');
-	  // self.reset();
-	});
 
 	this.map.on('moveend', function() {
-		// console.log('moveend');
-		// self.saveAnimationPositions();
 	  self.reset();
 	});
 
-	this.map.on('resize', function() {
-		// alert('resize');
-	  // self.reset();
-	  // console.log('resize');
-	});	
-
-	this.map.on('focus', function() {
-		// console.log('focus');
-		// alert('focus');
-	  // self.reset();
-	});
-
-	this.map.on('blur', function() {
-		// alert('blur');
-	  // self.reset();
-	  // console.log('blur');
-	});
-
 	this.map.on('movestart', function() {
-		// console.log('movestart');
 	  self.saveAnimationPositions();
-	});
-
-	this.map.on('zoomstart', function() {
-		// console.log('zoomstart');
-	  // self.saveAnimationPositions();
 	});
 
 	this.projection = d3.geo.mercator()
@@ -1272,7 +1221,6 @@ Map.prototype.addFlight = function(flightId, done) {
 
 	self.flights[flightId] = new Flight(flightId, self.flightConfig, self);
 	self.flights[flightId].fetchFlightTracks(null, function(err, data, flight) {
-		// console.log(flightId);
 		if (err) {
 			console.log(err);
 		}
@@ -1280,7 +1228,6 @@ Map.prototype.addFlight = function(flightId, done) {
 			console.log(data.error.errorMessage);
 		}
 		else {
-			// console.log("initializing flight", flightId);
 			flight.initialize(data);
 		}
 		if (done != null) done(err, flight);
@@ -1352,12 +1299,7 @@ Map.prototype.saveAnimationPositions = function() {
     var position = this.flights[flight].travelledPositions[this.flights[flight].travelledPositions.length - 1];
     var nextPosition = this.flights[flight].untravelledPositions[0];
 
-    if (position != null && nextPosition != null) {
-    	// if (position.delay === nextPosition.delay) {
-    	// 	progress = (new Date().getTime() - this.flights[flight].transitions.time) / position.duration;
-    	// }
-    	// console.log(position, nextPosition);
-    	// console.log(new Date().getTime() - this.flights[flight].transitions.time, position.delay, position.duration, nextPosition.delay, nextPosition.duration);
+    if (position != null && nextPosition != null && nextPosition.duration) {
     	var dividend = new Date().getTime() - this.flights[flight].transitions.time;
     	var divisor = nextPosition.duration;
     	var progress = dividend / divisor;
@@ -1370,7 +1312,7 @@ Map.prototype.saveAnimationPositions = function() {
 
     	var interpolater = d3.geo.interpolate([position.lon, position.lat], [nextPosition.lon, nextPosition.lat]);
     	var interpolatedPoint = interpolater(progress);
-
+      
     	this.flights[flight].interpolatedPosition = {};
     	this.flights[flight].interpolatedPosition.lat = interpolatedPoint[1];
     	this.flights[flight].interpolatedPosition.lon = interpolatedPoint[0];
@@ -1380,7 +1322,7 @@ Map.prototype.saveAnimationPositions = function() {
     	this.flights[flight].plane.transition().duration(0);
     }
     else {
-    	console.log("No positions for flight", flight);
+    	alert("No positions for flight");
     }
   }
 };
